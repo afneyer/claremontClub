@@ -1,14 +1,10 @@
-import argparse
-import os
+import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog
-import tkinter as tk
-from typing import Any, IO
 
 import pandas as pd
 from fpdf import FPDF
 
-global global_out_file
 global global_download_dir
 
 mail_name_col = 'mailing_name'
@@ -20,199 +16,198 @@ state_col = 'state'
 zip_col = 'zip'
 
 
-def get_file_from_user():
-    window = tk.Tk()
-    window.title("Open Club Express Export File")
-    window.geometry("600x200")
+class MailingLabelCreator:
 
-    w = 600  # width for the Tk root
-    h = 300  # height for the Tk root
+    def __init__(self):
+        self.down_load_dir = str(Path.home() / "Downloads")
+        self.pdf_label_file = "ActiveMembers.pdf"
+        self.default_club_express_export_file_name = "ActiveMembersExtra.csv"
+        self.club_express_export_file = None
 
-    # get screen width and height
-    ws = window.winfo_screenwidth()  # width of the screen
-    hs = window.winfo_screenheight()  # height of the screen
+        # Default values are initialize for 1 x 2 5/8" labels #612-221
+        # all values in inches
+        self.label_name = ''
+        self.page_height = 11
+        self.page_width = 8.5
+        self.number_across = 3
+        self.number_down = 10
+        self.labels_per_page = self.number_across * self.number_down
+        self.label_height = 1.0
+        self.label_width = 2.625
+        self.top_margin = 0.5
+        self.side_margin = 0.137
+        self.vertical_pitch = 0
+        self.horizontal_pitch = 0.118
 
-    # calculate x and y coordinates for the Tk root window
-    x = (ws / 2) - (w / 2)
-    y = (hs / 2) - (h / 2)
+        # indentation for the label text
+        self.text_indent = 0.137
 
-    # set the dimensions of the screen
-    # and where it is placed
-    window.geometry('%dx%d+%d+%d' % (w, h, x, y))
+    def get_file_from_user(self):
+        window = tk.Tk()
+        window.title("Open Club Express Export File")
+        window.geometry("600x200")
 
-    # Create text widget and specify size.
-    text = tk.Text(window, height=6, width=80, )
-    text.config(font=("Arial", 14), spacing1=3, spacing2=3, spacing3=3)
-    hint = ("Enter the name of the file exported from Club Express\n" +
-            "- For labels of all active members go to Club Express\n" +
-            "- Select Control Panel -> Club -> Admin Functions -> Data Export\n" +
-            "- Select People -> Active Members (as above ... including other fields)\n" +
-            "  -> Typically this will create a file called \"ActiveMembers.csv in the downloads folder\n" +
-            "- Select the generated file\n")
-    text.pack()
-    text.insert(tk.END, hint)
+        w = 600  # width for the Tk root
+        h = 300  # height for the Tk root
 
-    def open_file():
-        global global_out_file
-        global download_dir
-        global_out_file = filedialog.askopenfile(initialfile="ActiveMembers.csv")
+        # get screen width and height
+        ws = window.winfo_screenwidth()  # width of the screen
+        hs = window.winfo_screenheight()  # height of the screen
+
+        # calculate x and y coordinates for the Tk root window
+        x = (ws / 2) - (w / 2)
+        y = (hs / 2) - (h / 2)
+
+        # set the dimensions of the screen
+        # and where it is placed
+        window.geometry('%dx%d+%d+%d' % (w, h, x, y))
+
+        # Create text widget and specify size.
+        text = tk.Text(window, height=6, width=80, )
+        text.config(font=("Arial", 14), spacing1=3, spacing2=3, spacing3=3)
+        hint = ("Enter the name of the file exported from Club Express\n" +
+                "- For labels of all active members go to Club Express\n" +
+                "- Select Control Panel -> Club -> Admin Functions -> Data Export\n" +
+                "- Select People -> Active Members (as above ... including other fields)\n" +
+                "  -> Typically this will create a file called \"ActiveMembersExtra.csv in the downloads folder\n" +
+                "- Select the generated file\n")
+        text.pack()
+        text.insert(tk.END, hint)
+
+        # Create a button
+        button = tk.Button(window, text="Open File", command=lambda: self.open_file(window))
+        button.pack()
+
+        # Run the application
+        window.mainloop()
+
+        return self.club_express_export_file
+
+    def open_file(self, window):
+        file_name = filedialog.askopenfile(initialdir=self.down_load_dir,
+                                           initialfile=self.default_club_express_export_file_name)
+        self.club_express_export_file = file_name
         window.destroy()
 
-    # Create a button
-    button = tk.Button(window, text="Open File", command=open_file)
-    button.pack()
+    def create_mailing_labels(self):
+        input_file = self.get_file_from_user()
+        df = pd.read_csv(input_file, sep=',')  # Use ',' as the separator
+        df.columns = df.columns.str.strip()  # Strip leading and trailing spaces
 
-    # Run the application
-    window.mainloop()
+        # Convert all the fields to strings
+        for col in [mail_name_col, addr1_col, addr2_col, city_col, state_col, zip_col]:
+            df[col] = df[col].astype(str)
 
-    return global_out_file
+        # Replace 'nan' with an empty string
+        df.replace('nan', '', inplace=True)
 
+        # Sort the DataFrame by the OWNER1 column
+        df.sort_values(by=[last_name_col], inplace=True)
 
-def create_mailing_labels():
-    global global_download_dir
-    input_file = get_file_from_user()
-    df = pd.read_csv(input_file, sep=',')  # Use ',' as the separator
-    df.columns = df.columns.str.strip()  # Strip leading and trailing spaces
+        # Create the mailing address
+        df['mailing_address'] = df.apply(lambda arow: '\n'.join(filter(None, [arow[mail_name_col], ', '.join(
+            filter(None, [arow[addr1_col], arow[addr2_col]])), ', '.join(
+            [arow[city_col], arow[state_col], arow[zip_col]])])),
+                                         axis=1)
 
-    # Convert all the fields to strings
-    for col in [mail_name_col, addr1_col, addr2_col, city_col, state_col, zip_col]:
-        df[col] = df[col].astype(str)
+        df['normalized_mailing_address'] = df.apply(lambda arow: self.normalized_mailing_address(arow), axis=1)
 
-    # Replace 'nan' with an empty string
-    df.replace('nan', '', inplace=True)
+        df_unique_address = df.drop_duplicates(subset=['normalized_mailing_address'], keep='first')
+        df_unique_address.reset_index(drop=True, inplace=True)
 
-    # Sort the DataFrame by the OWNER1 column
-    df.sort_values(by=[last_name_col], inplace=True)
+        df_dropped = df.duplicated(subset=[addr1_col, addr2_col, city_col, state_col, zip_col], keep='last')
 
-    # Create the mailing address
-    df['mailing_address'] = df.apply(lambda arow: '\n'.join(filter(None, [arow[mail_name_col], ', '.join(
-        filter(None, [arow[addr1_col], arow[addr2_col]])), ', '.join(
-        [arow[city_col], arow[state_col], arow[zip_col]])])),
-                                     axis=1)
+        df = df_unique_address
+        # Formatting for Office Depot 1" x 2-5/8" inch labels, 612-221, 3 rows and 10 columns per sheet
 
-    df['normalized_mailing_address'] = df.apply(lambda arow: normalized_mailing_address(arow), axis=1)
+        # Create a PDF in landscape orientation on letter size paper
+        pdf = FPDF('L', 'in', (self.page_height, self.page_width))
+        pdf.set_auto_page_break(False)
 
-    df_unique_address = df.drop_duplicates(subset=['normalized_mailing_address'], keep='first')
-    df_unique_address.reset_index(drop=True, inplace=True)
+        # Set the margins for the pdf file to the margins of the label sheet
+        pdf.set_top_margin(self.top_margin)
+        pdf.set_left_margin(self.side_margin + self.text_indent)
+        pdf.set_right_margin(0.0)
 
-    df_dropped = df.duplicated(subset=[addr1_col, addr2_col, city_col, state_col, zip_col], keep='last')
+        pdf.add_page()
+        page = 0
 
-    df = df_unique_address
-    # Formatting for Office Depot 1" x 2-5/8" inch labels, 612-221, 3 rows and 10 colums per sheet
+        for index, row in df.iterrows():
+            # Check if we need to add a new page
+            if index != 0 and index % (self.number_down * self.number_across) == 0:
+                pdf.add_page()
+                page += 1
 
-    pdf = FPDF('L', 'mm', (279.4, 215.9))  # Create a PDF in landscape orientation on letter size paper
-    pdf.set_auto_page_break(False)
-    # Dimensions of the text box in mm
-    # box_height = 28.575
-    # box_width = 114.3
+            # Calculate the position of the current text box
+            col_index = index % self.number_across
+            label_space = col_index * self.label_width
+            between_space = self.side_margin + col_index * self.horizontal_pitch
+            x = label_space + between_space + self.text_indent
 
-    # Set the margins to 1 inch (approximately 25.4 mm) at the top and bottom and
-    # 0.5 inch (approximately 12.7 mm) at the left
-    pdf.set_top_margin(12.7)
-    pdf.set_left_margin(5)
-    pdf.set_right_margin(0.0)
+            label_on_page_index = index - page * self.labels_per_page
+            row_index = label_on_page_index // self.number_across
+            label_space = row_index * self.label_height
+            between_space = self.top_margin + row_index * self.vertical_pitch
+            y = label_space + between_space
 
-    # Calculate the number of text boxes that can fit on a page
-    # boxes_per_page_horizontally = int((pdf.w - 0.0 - 25.4) / box_width)
-    boxes_per_page_horizontally = 3
-    left_margin = 5.0
-    horizontal_label_space = 3
-    label_width = 66.7
-    # boxes_per_page_vertically = int((pdf.h - 2 * 12.7) / box_height)
-    boxes_per_page_vertically = 10
-    top_margin = 12.7
-    vertical_label_space = 0
-    label_height = 25.4
-    label_indent = 3
+            font_size = 11
+            pdf.set_font("Arial", size=font_size)
+            points_per_inch = 72
+            points_to_inch = 1.0 / points_per_inch
+            line_height = font_size * points_to_inch
+            line_space = 0.4 * line_height
 
-    pdf.add_page()
-    page = 0
+            # Count the number of lines in the address and figure out the additional vertical margin to set inside the label
+            address_text = row['mailing_address']
+            line_count = address_text.count('\n') + 1
+            label_indent_vertical = ( self.label_height - (line_count * line_height + (line_count-1) * line_space) ) / 2.0
+            label_indent_vertical = max(0.05, label_indent_vertical)
+            y += label_indent_vertical
 
-    for index, row in df.iterrows():
-        # Check if we need to add a new page
-        if index != 0 and index % (boxes_per_page_vertically * boxes_per_page_horizontally) == 0:
-            pdf.add_page()
-            page += 1
+            pdf.set_xy(x, y)
+            pdf.multi_cell(self.label_width, line_height+line_space, txt=row['mailing_address'], align='L')
 
-        # Calculate the position of the current text box
-        col_index = index % boxes_per_page_horizontally
-        label_space = col_index * label_width
-        between_space = left_margin + col_index * horizontal_label_space
-        x = label_space + between_space + label_indent
+        pdf_label_file_path = self.down_load_dir + "/" + self.pdf_label_file
+        pdf.output(pdf_label_file_path, 'F')
 
-        label_on_page_index = index - page * boxes_per_page_horizontally * boxes_per_page_vertically
-        row_index = label_on_page_index // boxes_per_page_horizontally
-        label_space = row_index * label_height
-        between_space = top_margin + row_index * vertical_label_space
-        y = label_space + between_space
+    def normalized_mailing_address(self, row):
+        nma = (self.normalize_address1(row[addr1_col]) + '|' +
+               self.normalize_address2(row[addr2_col]) + '|' +
+               self.normalize_city(row[city_col]) + '|' +
+               self.normalize_state(row[state_col]) + '|' +
+               self.normalize_zip(row[zip_col]))
+        return nma
 
-        font_size = 11
-        pdf.set_font("Arial", size=font_size)
-        points_per_inch = 72
-        inch_to_mm = 25.4
-        points_to_mm = inch_to_mm / points_per_inch
-        line_height = 1.3 * font_size * points_to_mm
-        line_space = line_height - font_size * points_to_mm
+    def normalize_address1(self, address1):
+        address1 = self.clean(address1)
+        address1 = address1.replace('avenue', 'ave')
+        return address1
 
-        # Count the number of lines in the address and figure out the additional margin to set inside the label
-        address_text = row['mailing_address']
-        line_count = address_text.count('\n') + 1
-        label_margin = max(1, (label_height - line_count * line_height) / 2.0)
-        y += label_margin  # would be nice if it could be set within multi_cell
-        y += line_space / 2.0
+    def normalize_address2(self, address2):
+        address2 = self.clean(address2)
+        return address2
 
-        pdf.set_xy(x, y)
-        pdf.multi_cell(label_width, line_height, txt=row['mailing_address'], align='L')
+    def normalize_city(self, city):
+        city = self.clean(city)
+        return city
 
-    pdf_label_file_name = "ActiveMemberLabels.pdf"
-    pdf_label_file_path = global_download_dir + "/" + pdf_label_file_name
-    pdf.output(pdf_label_file_path, 'F')
+    def normalize_state(self, state):
+        state = self.clean(state)
+        return state
 
+    def normalize_zip(self, zip_code):
+        zip_code = self.clean(zip_code)
+        zip_code = zip_code.split('-')[0]
+        return zip_code
 
-def normalized_mailing_address(row):
-    nma = (normalize_address1(row[addr1_col]) + '|' +
-           normalize_address2(row[addr2_col]) + '|' +
-           normalize_city(row[city_col]) + '|' +
-           normalize_state(row[state_col]) + '|' +
-           normalize_zip(row[zip_col]))
-    return nma
-
-def normalize_address1(address1):
-    address1 = clean(address1)
-    address1 = address1.replace('avenue', 'ave')
-    return address1
-
-
-def normalize_address2(address2):
-    address2 = clean(address2)
-    return address2
-
-
-def normalize_city(city):
-    city = clean(city)
-    return city
-
-
-def normalize_state(state):
-    state = clean(state)
-    return state
-
-
-def normalize_zip(zip):
-    zip = clean(zip)
-    zip = zip.split('-')[0]
-    return zip
-
-
-def clean(adr_string):
-    adr_string = adr_string.strip()
-    adr_string = adr_string.lower()
-    adr_string = ' '.join(adr_string.split())
-    return adr_string
+    @staticmethod
+    def clean(adr_string):
+        adr_string = adr_string.strip()
+        adr_string = adr_string.lower()
+        adr_string = ' '.join(adr_string.split())
+        return adr_string
 
 
 if __name__ == "__main__":
-    global global_out_file
-    global_download_dir = str(Path.home() / "Downloads")
-
-    create_mailing_labels()
+    label_creator = MailingLabelCreator()
+    label_creator.create_mailing_labels()
